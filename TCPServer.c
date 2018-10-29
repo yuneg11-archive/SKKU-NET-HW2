@@ -48,11 +48,18 @@ int listenAndAcceptClient(int port) {
 }
 
 int sendToClient(int connection_sockfd, char *data, int data_size) {
-    if(send(connection_sockfd, data, data_size, 0) != data_size) {
-        perror("Error: Data sending failed");
-        close(connection_sockfd);
-        return -1;
-    }
+    int total_send_size = 0;
+    int send_size;
+
+    do {
+        send_size = send(connection_sockfd, &data[total_send_size], data_size - total_send_size, 0);
+        total_send_size += send_size;
+        if(send_size < 0) {
+            perror("Error: Data sending failed");
+            close(connection_sockfd);
+            return -1;
+        }
+    } while(total_send_size < data_size);
 
     return 0;
 }

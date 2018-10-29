@@ -33,11 +33,18 @@ int connectToServer(char *addr, int port) {
 }
 
 int receiveFromServer(int sockfd, char *data, int data_size) {
-    if(recv(sockfd, data, data_size, 0) < 0) {
-        perror("Error: Data receiving failed");
-        close(sockfd);
-        return -1;
-    }
+    int total_recv_size = 0;
+    int recv_size;
+
+    do {
+        recv_size = recv(sockfd, &data[total_recv_size], data_size - total_recv_size, 0);
+        total_recv_size += recv_size;
+        if(recv_size < 0) {
+            perror("Error: Data receiving failed");
+            close(sockfd);
+            return -1;
+        }
+    } while(total_recv_size < data_size);
 
     return 0;
 }

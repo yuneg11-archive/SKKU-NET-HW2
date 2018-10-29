@@ -7,59 +7,64 @@
 #include <arpa/inet.h>
 
 #define CLIENT_CONN_WAIT_QUEUE_SIZE 3
+#define FILE_NAME_LEN 128
+#define FILE_SIZE_LEN 13
 
-int listenFromClient(int port) {
+int listenAndAcceptClient(int port) {
     struct sockaddr_in local_addr;
-    int sockfd;
+    struct sockaddr_in client_addr;
+    int client_addr_len;
+    int listen_sockfd;
+    int connect_sockfd;
 
     memset(&local_addr, 0, sizeof(local_addr));
     local_addr.sin_family = AF_INET;
     local_addr.sin_port = htons(port);
     local_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     
-    if((sockfd = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
+    if((listen_sockfd = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
         perror("Error: Listen socket creating failed");
         return -1;
     }
-    if(bind(sockfd, (struct sockaddr*)&local_addr, sizeof(local_addr)) < 0) {
+    if(bind(listen_sockfd, (struct sockaddr*)&local_addr, sizeof(local_addr)) < 0) {
         perror("Error: Socket binding failed");
-        close(sockfd);
+        close(listen_sockfd);
         return -1;
     }
-    if(listen(sockfd, CLIENT_CONN_WAIT_QUEUE_SIZE) < 0) {
+    if(listen(listen_sockfd, CLIENT_CONN_WAIT_QUEUE_SIZE) < 0) {
         perror("Error: Client listening failed");
-        close(sockfd);
+        close(listen_sockfd);
         return -1;
     }
-
-    return sockfd;
-}
-
-int sendToClient(int listen_sockfd, char *data, int data_size) {
-    struct sockaddr_in client_addr;
-    int client_addr_len;
-    int sockfd;
-
-    if((sockfd = accept(listen_sockfd, (struct sockaddr*)&client_addr, &client_addr_len)) < 0) {
+    if((connect_sockfd = accept(listen_sockfd, (struct sockaddr*)&client_addr, &client_addr_len)) < 0) {
         perror("Error: Client accepting failed");
         return -1;
     }
-    if(send(sockfd, data, data_size, 0) != data_size) {
+
+
+    close(listen_sockfd);
+
+    return connect_sockfd;
+}
+
+int sendToClient(int connection_sockfd, char *data, int data_size) {
+    if(send(connection_sockfd, data, data_size, 0) != data_size) {
         perror("Error: Data sending failed");
-        close(sockfd);
+        close(connection_sockfd);
         return -1;
     }
 
-    close(sockfd);
     return 0;
 }
 
 int main(int argc, char *argv[]) {
     int connectionSocketDescriptor;
+    int port;
 
     FILE *filePointer;
+    char fileName[FILE_NAME_LEN] = {};
     int fileSize;
-    char fileSizeString[13];
+    char fileSizeString[FILE_SIZE_LEN] = {};
     char *fileData;
 
     if(argc != 3) {
@@ -67,9 +72,13 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    printf("Waiting on port %s to send file \"%s\"...\n", argv[1], argv[2]);
+    port = atoi(argv[1]);
+    strcpy(fileName, argv[2]);
 
-    if((filePointer = fopen(argv[2], "r")) == NULL) {
+    printf("Waiting on port %d to send file \"%s\"...\n", port, fileName);
+
+    
+    if((filePointer = fopen(fileName, "r")) == NULL) {
         perror("Error: File accessing failed");
         exit(1);
     }
@@ -86,17 +95,17 @@ int main(int argc, char *argv[]) {
     }
     fclose(filePointer);
     
-    if((connectionSocketDescriptor = listenFromClient(atoi(argv[1]))) == -1) {
+    if((connectionSocketDescriptor = listenAndAcceptClient(port)) == -1) {
         perror("Error: Listening socket ready failed");
         exit(1);
     }
 
-    if(sendToClient(connectionSocketDescriptor, argv[2], strlen(argv[2])+1) == -1) {
+    if(sendToClient(connectionSocketDescriptor, fileName, FILE_NAME_LEN) == -1) {
         perror("Error: File name sending failed");
         exit(1);
     }
 
-    if(sendToClient(connectionSocketDescriptor, fileSizeString, strlen(fileSizeString)+1) == -1) {
+    if(sendToClient(connectionSocketDescriptor, fileSizeString, FILE_SIZE_LEN) == -1) {
         perror("Error: File size sending failed");
         exit(1);
     }

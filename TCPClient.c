@@ -6,9 +6,11 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-#define FILE_NAME_SIZE 128
+#define SERVER_ADDR_LEN 128
+#define FILE_NAME_LEN 128
+#define FILE_SIZE_LEN 13
 
-int receiveFromServer(char *data, int data_size, char *addr, int port) {
+int connectToServer(char *addr, int port) {
     int sockfd;
     struct sockaddr_in serv_addr;
 
@@ -26,20 +28,28 @@ int receiveFromServer(char *data, int data_size, char *addr, int port) {
         close(sockfd);
         return -1;
     }
+
+    return sockfd;
+}
+
+int receiveFromServer(int sockfd, char *data, int data_size) {
     if(recv(sockfd, data, data_size, 0) < 0) {
         perror("Error: Data receiving failed");
         close(sockfd);
         return -1;
     }
 
-    close(sockfd);
     return 0;
 }
 
 int main(int argc, char *argv[]) {
+    int connectionSocketDescriptor;
+    char serverAddress[SERVER_ADDR_LEN];
+    int port;
+
     FILE *filePointer;
-    char fileName[FILE_NAME_SIZE];
-    char fileSizeBuffer[13];
+    char fileName[FILE_NAME_LEN];
+    char fileSizeBuffer[FILE_SIZE_LEN];
     int fileSize;
     char *fileData;
 
@@ -48,9 +58,17 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    printf("Connecting to %s:%s...\n", argv[1], argv[2]);
+    strcpy(serverAddress, argv[1]);
+    port = atoi(argv[2]);
 
-    if(receiveFromServer(fileName, sizeof(fileName), argv[1], atoi(argv[2])) == -1) {
+    printf("Connecting to %s:%d...\n", serverAddress, port);
+
+    if((connectionSocketDescriptor = connectToServer(serverAddress, port)) == -1) {
+        perror("Error: Connecting to server failed");
+        exit(1);
+    }
+
+    if(receiveFromServer(connectionSocketDescriptor, fileName, FILE_NAME_LEN) == -1) {
         perror("Error: File name receiving failed");
         exit(1);
     }
@@ -62,7 +80,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    if(receiveFromServer(fileSizeBuffer, sizeof(fileSizeBuffer), argv[1], atoi(argv[2])) == -1) {
+    if(receiveFromServer(connectionSocketDescriptor, fileSizeBuffer, FILE_SIZE_LEN) == -1) {
         perror("Error: File size receiving failed");
         exit(1);
     }
@@ -70,7 +88,7 @@ int main(int argc, char *argv[]) {
     fileSize = atoi(fileSizeBuffer);
     fileData = malloc(fileSize);
 
-    if(receiveFromServer(fileData, fileSize, argv[1], atoi(argv[2])) == -1) {
+    if(receiveFromServer(connectionSocketDescriptor, fileData, fileSize) == -1) {
         perror("Error: File data receiving failed");
         exit(1);
     }
@@ -81,6 +99,7 @@ int main(int argc, char *argv[]) {
     }
 
     fclose(filePointer);
+    close(connectionSocketDescriptor);
 
     printf("Receiving complete.\n");
 
